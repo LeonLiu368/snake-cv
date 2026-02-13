@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useHeadTracking } from './useHeadTracking'
+import { getNextSnakeState, randomFood } from './gameLogic'
 import './App.css'
 
 const GRID_SIZE = 18
@@ -15,25 +16,15 @@ const DIRECTIONS = {
   d: { x: 1, y: 0 },
 }
 
-const randomFood = (snake) => {
-  const occupied = new Set(snake.map((seg) => `${seg.x},${seg.y}`))
-  let spot = null
-  while (!spot || occupied.has(`${spot.x},${spot.y}`)) {
-    spot = {
-      x: Math.floor(Math.random() * GRID_SIZE),
-      y: Math.floor(Math.random() * GRID_SIZE),
-    }
-  }
-  return spot
-}
-
 function App() {
   const [snake, setSnake] = useState([
     { x: 6, y: 9 },
     { x: 5, y: 9 },
     { x: 4, y: 9 },
   ])
-  const [food, setFood] = useState(() => randomFood([{ x: 6, y: 9 }]))
+  const [food, setFood] = useState(() =>
+    randomFood([{ x: 6, y: 9 }], GRID_SIZE),
+  )
   const [direction, setDirection] = useState({ x: 1, y: 0 })
   const [running, setRunning] = useState(false)
   const [score, setScore] = useState(0)
@@ -58,13 +49,15 @@ function App() {
     noseOffset,
     fps,
     trackingStatus,
+    isCalibrating,
+    calibrationProgress,
     recalibrate: headRecalibrate,
     retry: headRetry,
   } = useHeadTracking({ faceEnabled, onDirectionChange: handleDirectionChange })
 
   const boardCells = useMemo(
     () => Array.from({ length: GRID_SIZE * GRID_SIZE }),
-    []
+    [],
   )
 
   const reset = useCallback(() => {
@@ -74,7 +67,7 @@ function App() {
       { x: 4, y: 9 },
     ]
     setSnake(freshSnake)
-    setFood(randomFood(freshSnake))
+    setFood(randomFood(freshSnake, GRID_SIZE))
     setDirection({ x: 1, y: 0 })
     queuedDirection.current = { x: 1, y: 0 }
     setScore(0)
@@ -98,34 +91,25 @@ function App() {
       setSnake((prev) => {
         const nextDirection = queuedDirection.current
         setDirection(nextDirection)
-        const head = prev[0]
-        const nextHead = {
-          x: head.x + nextDirection.x,
-          y: head.y + nextDirection.y,
-        }
-        const hitWall =
-          nextHead.x < 0 ||
-          nextHead.y < 0 ||
-          nextHead.x >= GRID_SIZE ||
-          nextHead.y >= GRID_SIZE
-        const hitSelf = prev.some(
-          (seg) => seg.x === nextHead.x && seg.y === nextHead.y
+        const { nextSnake, ateFood, gameOver } = getNextSnakeState(
+          prev,
+          nextDirection,
+          food,
+          GRID_SIZE,
         )
-        if (hitWall || hitSelf) {
+        if (gameOver) {
           setRunning(false)
           setStatus('Game Over')
           setBest((current) => Math.max(current, score))
           return prev
         }
-        const nextSnake = [nextHead, ...prev]
-        if (nextHead.x === food.x && nextHead.y === food.y) {
+        if (ateFood) {
           const nextScore = score + 10
           setScore(nextScore)
           setScorePop(true)
-          setFood(randomFood(nextSnake))
+          setFood(randomFood(nextSnake, GRID_SIZE))
           return nextSnake
         }
-        nextSnake.pop()
         return nextSnake
       })
     }, START_SPEED)
@@ -240,22 +224,38 @@ function App() {
             })}
           </div>
           {status === 'Game Over' ? (
-            <div className="board-overlay game-over" role="dialog" aria-label="Game Over">
+            <div
+              className="board-overlay game-over"
+              role="dialog"
+              aria-label="Game Over"
+            >
               <div className="board-overlay-content">
                 <h2 className="board-overlay-title">Game Over</h2>
                 <p className="board-overlay-sub">Best: {best}</p>
-                <button type="button" className="primary board-overlay-cta" onClick={handleStart}>
+                <button
+                  type="button"
+                  className="primary board-overlay-cta"
+                  onClick={handleStart}
+                >
                   Play again
                 </button>
               </div>
             </div>
           ) : null}
           {status === 'Paused' ? (
-            <div className="board-overlay paused" role="dialog" aria-label="Paused">
+            <div
+              className="board-overlay paused"
+              role="dialog"
+              aria-label="Paused"
+            >
               <div className="board-overlay-content">
                 <h2 className="board-overlay-title">Paused</h2>
                 <p className="board-overlay-sub">Press Start to resume</p>
-                <button type="button" className="primary board-overlay-cta" onClick={handleStart}>
+                <button
+                  type="button"
+                  className="primary board-overlay-cta"
+                  onClick={handleStart}
+                >
                   Resume
                 </button>
               </div>
@@ -263,7 +263,7 @@ function App() {
           ) : null}
         </div>
 
-          <div className="camera-panel">
+        <div className="camera-panel">
           <div className="camera-frame">
             <video ref={videoRef} muted playsInline />
             <canvas ref={canvasRef} />
@@ -275,6 +275,24 @@ function App() {
                 </button>
               </div>
             ) : null}
+            {isCalibrating ? (
+              <div
+                className="camera-calibration-overlay"
+                role="status"
+                aria-live="polite"
+                aria-label="Calibrating head tracking"
+              >
+                <p className="camera-calibration-text">
+                  Look at the camera, hold still…
+                </p>
+                <div className="camera-calibration-bar" aria-hidden="true">
+                  <div
+                    className="camera-calibration-fill"
+                    style={{ width: `${calibrationProgress * 100}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="camera-badges">
               <p className="fps-badge">{fps} fps</p>
               {headDirection ? (
@@ -283,9 +301,12 @@ function App() {
             </div>
             <p className="camera-status">{cameraStatus}</p>
             <div className="nose-compass" aria-hidden="true">
-              <span className="nose-dot" style={{
-                transform: `translate(${noseVector.x}px, ${noseVector.y}px)`
-              }} />
+              <span
+                className="nose-dot"
+                style={{
+                  transform: `translate(${noseVector.x}px, ${noseVector.y}px)`,
+                }}
+              />
               <span className="nose-ring" />
             </div>
           </div>
