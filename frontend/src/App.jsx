@@ -5,6 +5,8 @@ import './App.css'
 
 const GRID_SIZE = 18
 const START_SPEED = 140
+const SPEED_MIN = 80
+const BEST_STORAGE_KEY = 'snakecv_best'
 const DIRECTIONS = {
   ArrowUp: { x: 0, y: -1 },
   ArrowDown: { x: 0, y: 1 },
@@ -14,6 +16,15 @@ const DIRECTIONS = {
   s: { x: 0, y: 1 },
   a: { x: -1, y: 0 },
   d: { x: 1, y: 0 },
+}
+
+function loadBest() {
+  try {
+    const v = parseInt(localStorage.getItem(BEST_STORAGE_KEY) ?? '0', 10)
+    return Number.isFinite(v) ? v : 0
+  } catch {
+    return 0
+  }
 }
 
 function App() {
@@ -28,12 +39,15 @@ function App() {
   const [direction, setDirection] = useState({ x: 1, y: 0 })
   const [running, setRunning] = useState(false)
   const [score, setScore] = useState(0)
-  const [best, setBest] = useState(0)
+  const [best, setBest] = useState(loadBest)
   const [status, setStatus] = useState('Press Start')
   const [restartPulse, setRestartPulse] = useState(false)
   const [scorePop, setScorePop] = useState(false)
   const [faceEnabled, setFaceEnabled] = useState(true)
+  const [sensitivity, setSensitivity] = useState(1)
   const queuedDirection = useRef(direction)
+  const gameOverButtonRef = useRef(null)
+  const pausedButtonRef = useRef(null)
 
   const handleDirectionChange = useCallback((vec) => {
     const cur = queuedDirection.current
@@ -51,9 +65,14 @@ function App() {
     trackingStatus,
     isCalibrating,
     calibrationProgress,
+    calibrationMessage,
     recalibrate: headRecalibrate,
     retry: headRetry,
-  } = useHeadTracking({ faceEnabled, onDirectionChange: handleDirectionChange })
+  } = useHeadTracking({
+    faceEnabled,
+    onDirectionChange: handleDirectionChange,
+    sensitivity,
+  })
 
   const boardCells = useMemo(
     () => Array.from({ length: GRID_SIZE * GRID_SIZE }),
@@ -74,8 +93,50 @@ function App() {
     setStatus('Ready')
   }, [])
 
+  const handleStart = useCallback(() => {
+    if (!running) {
+      if (status === 'Game Over') {
+        reset()
+      }
+      headRecalibrate()
+      setRunning(true)
+      setStatus('Running')
+      setRestartPulse(true)
+    }
+  }, [running, status, reset, headRecalibrate])
+
+  useEffect(() => {
+    if (best > 0) {
+      try {
+        localStorage.setItem(BEST_STORAGE_KEY, String(best))
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [best])
+
   useEffect(() => {
     const handleKey = (event) => {
+      if (event.key === ' ') {
+        event.preventDefault()
+        if (running) {
+          setRunning(false)
+          setStatus('Paused')
+        } else if (status === 'Paused') {
+          setRunning(true)
+          setStatus('Running')
+        }
+        return
+      }
+      if (event.key === 'Enter') {
+        if (
+          !running &&
+          ['Press Start', 'Ready', 'Game Over', 'Paused'].includes(status)
+        ) {
+          handleStart()
+        }
+        return
+      }
       const next = DIRECTIONS[event.key]
       if (!next) return
       if (direction.x + next.x === 0 && direction.y + next.y === 0) return
@@ -83,10 +144,11 @@ function App() {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [direction])
+  }, [direction, running, status, handleStart])
 
   useEffect(() => {
     if (!running) return undefined
+    const delay = Math.max(SPEED_MIN, START_SPEED - score * 2)
     const interval = setInterval(() => {
       setSnake((prev) => {
         const nextDirection = queuedDirection.current
@@ -112,21 +174,9 @@ function App() {
         }
         return nextSnake
       })
-    }, START_SPEED)
+    }, delay)
     return () => clearInterval(interval)
   }, [food, running, score])
-
-  const handleStart = () => {
-    if (!running) {
-      if (status === 'Game Over') {
-        reset()
-      }
-      headRecalibrate()
-      setRunning(true)
-      setStatus('Running')
-      setRestartPulse(true)
-    }
-  }
 
   const handlePause = () => {
     setRunning(false)
@@ -138,6 +188,17 @@ function App() {
   }
 
   const noseVector = noseOffset
+
+  useEffect(() => {
+    if (status === 'Game Over') {
+      gameOverButtonRef.current?.focus()
+    }
+  }, [status])
+  useEffect(() => {
+    if (status === 'Paused') {
+      pausedButtonRef.current?.focus()
+    }
+  }, [status])
 
   useEffect(() => {
     if (!restartPulse) return undefined
@@ -191,6 +252,18 @@ function App() {
             <span className="toggle-knob" />
             <span className="toggle-label">Face</span>
           </label>
+          <label className="sensitivity-label">
+            <span className="sensitivity-text">Sensitivity</span>
+            <input
+              type="range"
+              min="0.5"
+              max="2"
+              step="0.25"
+              value={sensitivity}
+              onChange={(e) => setSensitivity(parseFloat(e.target.value, 10))}
+              aria-label="Head tracking sensitivity"
+            />
+          </label>
         </div>
       </header>
 
@@ -233,6 +306,7 @@ function App() {
                 <h2 className="board-overlay-title">Game Over</h2>
                 <p className="board-overlay-sub">Best: {best}</p>
                 <button
+                  ref={gameOverButtonRef}
                   type="button"
                   className="primary board-overlay-cta"
                   onClick={handleStart}
@@ -252,6 +326,7 @@ function App() {
                 <h2 className="board-overlay-title">Paused</h2>
                 <p className="board-overlay-sub">Press Start to resume</p>
                 <button
+                  ref={pausedButtonRef}
                   type="button"
                   className="primary board-overlay-cta"
                   onClick={handleStart}
@@ -283,7 +358,7 @@ function App() {
                 aria-label="Calibrating head tracking"
               >
                 <p className="camera-calibration-text">
-                  Look at the camera, hold still…
+                  {calibrationMessage}
                 </p>
                 <div className="camera-calibration-bar" aria-hidden="true">
                   <div

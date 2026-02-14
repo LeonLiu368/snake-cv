@@ -1,25 +1,54 @@
 /**
- * Canvas overlay for face tracking: nose dot, direction arrow, optional face grid.
+ * Canvas overlay for face tracking: nose dot, direction arrow, face contours.
  * Nose dot uses raw landmark position so it sits on the nose; arrow uses calibrated
  * direction and scales with head-turn distance.
  */
 
 import { NOSE_INDEX, NOSE_THRESHOLD } from './headTrackingConfig'
+import { FACE_LANDMARKS_CONTOURS } from './faceLandmarkConnections'
 
 const NOSE_DOT_RADIUS = 6
 const ARROW_LENGTH_MIN = 28
 const ARROW_LENGTH_MAX = 130
 const ARROW_HEAD_LEN = 16
-const ARROW_HEAD_ANGLE = Math.PI / 6
 const NOSE_FILL = 'rgba(126, 240, 193, 0.95)'
 const NOSE_STROKE = 'rgba(255, 255, 255, 0.5)'
 const ARROW_STROKE = 'rgba(255, 211, 106, 0.95)'
 const ARROW_FILL = 'rgba(255, 220, 130, 0.92)'
-const FACE_GRID_FILL = 'rgba(31, 42, 68, 0.06)'
-const FACE_GRID_STROKE = 'rgba(31, 42, 68, 0.18)'
-const FACE_GRID_RINGS = 'rgba(31, 42, 68, 0.2)'
+const FACE_CONTOUR_STROKE = 'rgba(255, 255, 255, 0.35)'
 const NOSE_CENTER = 0.5
 const DISTANCE_FOR_MAX_ARROW = 0.18
+
+/**
+ * Arrow length from normalized distance from center (0.5, 0.5).
+ * @param {number} distance - hypot(dx, dy) in 0–1 space
+ * @returns {number} pixel length
+ */
+export function getArrowLength(distance) {
+  const t = Math.min(
+    1,
+    Math.max(
+      0,
+      (distance - NOSE_THRESHOLD) / (DISTANCE_FOR_MAX_ARROW - NOSE_THRESHOLD),
+    ),
+  )
+  return ARROW_LENGTH_MIN + t * (ARROW_LENGTH_MAX - ARROW_LENGTH_MIN)
+}
+
+/**
+ * Nose position in screen pixels from raw landmark (normalized 0–1).
+ * @param {{ x: number, y: number }} noseRaw
+ * @param {number} width
+ * @param {number} height
+ * @param {boolean} mirror
+ * @returns {{ x: number, y: number }}
+ */
+export function getNoseScreenPosition(noseRaw, width, height, mirror) {
+  return {
+    x: (mirror ? 1 - noseRaw.x : noseRaw.x) * width,
+    y: noseRaw.y * height,
+  }
+}
 
 /**
  * Draw the full tracking overlay (clears canvas first).
@@ -34,15 +63,14 @@ export function drawTrackingOverlay(ctx, width, height, options) {
   ctx.clearRect(0, 0, width, height)
 
   if (faceLandmarks && faceLandmarks.length) {
-    drawFaceGrid(ctx, width, height, faceLandmarks, mirror)
+    drawFaceContours(ctx, width, height, faceLandmarks, mirror)
   }
 
   const noseRaw =
     faceLandmarks && faceLandmarks[NOSE_INDEX]
       ? faceLandmarks[NOSE_INDEX]
       : nose
-  const cx = (mirror ? 1 - noseRaw.x : noseRaw.x) * width
-  const cy = noseRaw.y * height
+  const { x: cx, y: cy } = getNoseScreenPosition(noseRaw, width, height, mirror)
 
   ctx.fillStyle = NOSE_FILL
   ctx.strokeStyle = NOSE_STROKE
@@ -54,12 +82,7 @@ export function drawTrackingOverlay(ctx, width, height, options) {
 
   if (direction) {
     const distance = Math.hypot(nose.x - NOSE_CENTER, nose.y - NOSE_CENTER)
-    const t = Math.min(
-      1,
-      Math.max(0, (distance - NOSE_THRESHOLD) / (DISTANCE_FOR_MAX_ARROW - NOSE_THRESHOLD)),
-    )
-    const arrowLength =
-      ARROW_LENGTH_MIN + t * (ARROW_LENGTH_MAX - ARROW_LENGTH_MIN)
+    const arrowLength = getArrowLength(distance)
 
     let ex = cx
     let ey = cy
@@ -110,61 +133,23 @@ export function drawTrackingOverlay(ctx, width, height, options) {
  * @param {Array<{ x: number, y: number }>} landmarks
  * @param {boolean} mirror
  */
-function drawFaceGrid(ctx, width, height, landmarks, mirror) {
+function drawFaceContours(ctx, width, height, landmarks, mirror) {
   if (!landmarks || !landmarks.length) return
-  let minX = 1
-  let minY = 1
-  let maxX = 0
-  let maxY = 0
-  for (const point of landmarks) {
-    const x = mirror ? 1 - point.x : point.x
-    minX = Math.min(minX, x)
-    minY = Math.min(minY, point.y)
-    maxX = Math.max(maxX, x)
-    maxY = Math.max(maxY, point.y)
-  }
-  const pad = 0.05
-  const left = Math.max(0, (minX - pad) * width)
-  const right = Math.min(width, (maxX + pad) * width)
-  const top = Math.max(0, (minY - pad) * height)
-  const bottom = Math.min(height, (maxY + pad) * height)
-  const step = Math.max(14, Math.floor((right - left) / 10))
-  const cx = (left + right) / 2
-  const cy = (top + bottom) / 2
-  const rx = (right - left) / 2
-  const ry = (bottom - top) / 2
-  ctx.save()
+  ctx.strokeStyle = FACE_CONTOUR_STROKE
+  ctx.lineWidth = 1.5
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
   ctx.beginPath()
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
-  ctx.clip()
-  ctx.fillStyle = FACE_GRID_FILL
-  ctx.fillRect(left, top, right - left, bottom - top)
-  ctx.strokeStyle = FACE_GRID_STROKE
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  for (let x = left; x <= right; x += step) {
-    ctx.moveTo(x, top)
-    ctx.lineTo(x, bottom)
-  }
-  for (let y = top; y <= bottom; y += step) {
-    ctx.moveTo(left, y)
-    ctx.lineTo(right, y)
+  for (const [i, j] of FACE_LANDMARKS_CONTOURS) {
+    if (i >= landmarks.length || j >= landmarks.length) continue
+    const a = landmarks[i]
+    const b = landmarks[j]
+    const x1 = (mirror ? 1 - a.x : a.x) * width
+    const y1 = a.y * height
+    const x2 = (mirror ? 1 - b.x : b.x) * width
+    const y2 = b.y * height
+    ctx.moveTo(x1, y1)
+    ctx.lineTo(x2, y2)
   }
   ctx.stroke()
-  ctx.strokeStyle = FACE_GRID_RINGS
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  for (let i = 0; i < 3; i += 1) {
-    ctx.ellipse(
-      cx,
-      cy,
-      rx * (0.35 + i * 0.2),
-      ry * (0.35 + i * 0.2),
-      0,
-      0,
-      Math.PI * 2,
-    )
-  }
-  ctx.stroke()
-  ctx.restore()
 }

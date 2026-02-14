@@ -191,6 +191,24 @@ button {
   outline: none;
 }
 
+.sensitivity-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.sensitivity-text {
+  white-space: nowrap;
+}
+
+.sensitivity-label input[type="range"] {
+  width: 72px;
+  height: 6px;
+  accent-color: var(--snake-color);
+}
+
 .primary {
   padding: var(--space-sm) var(--space-lg);
   background: var(--accent);

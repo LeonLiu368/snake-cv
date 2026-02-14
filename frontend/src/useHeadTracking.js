@@ -4,6 +4,7 @@ import {
   NOSE_INDEX,
   NOSE_SMOOTHING,
   NOSE_CENTER,
+  NOSE_THRESHOLD,
   DIRECTION_COOLDOWN_MS,
   UI_THROTTLE_MS,
   HEAD_DIRECTIONS,
@@ -26,12 +27,17 @@ const FACE_LANDMARKER_MODEL =
   DEFAULT_FACE_LANDMARKER_MODEL_URL
 const BASELINE_BLEND_INTERVAL_MS = 5000
 const BASELINE_BLEND_ALPHA = 0.1
+const BASELINE_DRIFT_ENABLED = false
 
 /**
- * @param {{ faceEnabled: boolean, onDirectionChange: (vec: { x: number, y: number }) => void }} options
- * @returns {{ videoRef: React.RefObject, canvasRef: React.RefObject, cameraStatus: string, headDirection: string | null, noseOffset: { x: number, y: number }, fps: number, trackingStatus: 'idle'|'loading'|'ready'|'error', isCalibrating: boolean, calibrationProgress: number, recalibrate: () => void, retry: () => void }}
+ * @param {{ faceEnabled: boolean, onDirectionChange: (vec: { x: number, y: number }) => void, sensitivity?: number }} options
+ * @returns {{ videoRef: React.RefObject, canvasRef: React.RefObject, cameraStatus: string, headDirection: string | null, noseOffset: { x: number, y: number }, fps: number, trackingStatus: 'idle'|'loading'|'ready'|'error', isCalibrating: boolean, calibrationProgress: number, calibrationMessage: string, recalibrate: () => void, retry: () => void }}
  */
-export function useHeadTracking({ faceEnabled, onDirectionChange }) {
+export function useHeadTracking({
+  faceEnabled,
+  onDirectionChange,
+  sensitivity = 1,
+}) {
   const [trackingStatus, setTrackingStatus] = useState('loading')
   const [cameraStatus, setCameraStatus] = useState('Initializing camera…')
   const [headDirection, setHeadDirection] = useState(null)
@@ -40,6 +46,8 @@ export function useHeadTracking({ faceEnabled, onDirectionChange }) {
   const [retryKey, setRetryKey] = useState(0)
   const [isCalibrating, setIsCalibrating] = useState(false)
   const [calibrationProgress, setCalibrationProgress] = useState(0)
+  const [hasSeenFaceThisCalibration, setHasSeenFaceThisCalibration] =
+    useState(false)
 
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
@@ -80,6 +88,7 @@ export function useHeadTracking({ faceEnabled, onDirectionChange }) {
     setHeadDirection(null)
     setIsCalibrating(true)
     setCalibrationProgress(0)
+    setHasSeenFaceThisCalibration(false)
   }, [])
 
   const retry = useCallback(() => {
@@ -133,6 +142,7 @@ export function useHeadTracking({ faceEnabled, onDirectionChange }) {
           calibrationSamplesRef.current = []
           setIsCalibrating(true)
           setCalibrationProgress(0)
+          setHasSeenFaceThisCalibration(false)
         }
 
         const loop = () => {
@@ -166,9 +176,11 @@ export function useHeadTracking({ faceEnabled, onDirectionChange }) {
                 calibrationSamplesRef.current = []
                 setIsCalibrating(true)
                 setCalibrationProgress(0)
+                setHasSeenFaceThisCalibration(false)
               }
 
               if (isCalibratingRef.current) {
+                setHasSeenFaceThisCalibration(true)
                 calibrationSamplesRef.current.push({ x: nose.x, y: nose.y })
                 const progress =
                   calibrationSamplesRef.current.length /
@@ -192,8 +204,9 @@ export function useHeadTracking({ faceEnabled, onDirectionChange }) {
               }
 
               if (
+                BASELINE_DRIFT_ENABLED &&
                 now - lastBaselineBlendRef.current >=
-                BASELINE_BLEND_INTERVAL_MS
+                  BASELINE_BLEND_INTERVAL_MS
               ) {
                 lastBaselineBlendRef.current = now
                 const b = baselineNoseRef.current
@@ -211,7 +224,8 @@ export function useHeadTracking({ faceEnabled, onDirectionChange }) {
                 y: nose.y - baselineNoseRef.current.y + NOSE_CENTER,
               }
               const smoothNose = smoothPoint(calibrated)
-              const mirrored = getMirroredHeadDirection(smoothNose)
+              const threshold = NOSE_THRESHOLD / Math.max(0.25, sensitivity)
+              const mirrored = getMirroredHeadDirection(smoothNose, threshold)
               if (now - lastUIThrottleRef.current >= UI_THROTTLE_MS) {
                 lastUIThrottleRef.current = now
                 setHeadDirection(mirrored)
@@ -303,6 +317,12 @@ export function useHeadTracking({ faceEnabled, onDirectionChange }) {
     }
   }, [faceEnabled, clearOverlay])
 
+  const calibrationMessage = isCalibrating
+    ? hasSeenFaceThisCalibration
+      ? 'Look at the camera, hold still…'
+      : 'Position your face in frame, then hold still…'
+    : ''
+
   return {
     videoRef,
     canvasRef,
@@ -313,6 +333,7 @@ export function useHeadTracking({ faceEnabled, onDirectionChange }) {
     trackingStatus,
     isCalibrating,
     calibrationProgress,
+    calibrationMessage,
     recalibrate,
     retry,
   }
