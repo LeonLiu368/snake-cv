@@ -1,9 +1,9 @@
 /**
- * Canvas overlay for face tracking: nose dot, direction arrow, face contours.
- * Nose dot uses raw landmark position so it sits on the nose; arrow uses calibrated
- * direction and scales with head-turn distance.
+ * Canvas overlay for face tracking: nose dot, direction arrow, full face mesh + contours.
+ * Nose dot uses raw landmark position; arrow scales with head-turn distance.
  */
 
+import { FaceLandmarker } from '@mediapipe/tasks-vision'
 import { NOSE_INDEX, NOSE_THRESHOLD } from './headTrackingConfig'
 import { FACE_LANDMARKS_CONTOURS } from './faceLandmarkConnections'
 
@@ -15,7 +15,13 @@ const NOSE_FILL = 'rgba(126, 240, 193, 0.95)'
 const NOSE_STROKE = 'rgba(255, 255, 255, 0.5)'
 const ARROW_STROKE = 'rgba(255, 211, 106, 0.95)'
 const ARROW_FILL = 'rgba(255, 220, 130, 0.92)'
-const FACE_CONTOUR_STROKE = 'rgba(255, 255, 255, 0.35)'
+const FACE_TESSELATION_STROKE = 'rgba(255, 255, 255, 0.28)'
+const FACE_TESSELATION_LINE_WIDTH = 1
+const FACE_CONTOUR_STROKE = 'rgba(255, 255, 255, 0.5)'
+const FACE_CONTOUR_LINE_WIDTH = 1
+/** Scale mesh horizontally so it appears wider (1 = no scale, 1.2 = 20% wider). */
+const FACE_MESH_SCALE_X = 1.7
+const FACE_MESH_CENTER = 0.5
 const NOSE_CENTER = 0.5
 const DISTANCE_FOR_MAX_ARROW = 0.18
 
@@ -63,7 +69,7 @@ export function drawTrackingOverlay(ctx, width, height, options) {
   ctx.clearRect(0, 0, width, height)
 
   if (faceLandmarks && faceLandmarks.length) {
-    drawFaceContours(ctx, width, height, faceLandmarks, mirror)
+    drawFaceMesh(ctx, width, height, faceLandmarks, mirror)
   }
 
   const noseRaw =
@@ -127,29 +133,60 @@ export function drawTrackingOverlay(ctx, width, height, options) {
 }
 
 /**
+ * Draw full face mesh (tesselation) then contours on top so the face is fully covered.
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} width
  * @param {number} height
  * @param {Array<{ x: number, y: number }>} landmarks
  * @param {boolean} mirror
  */
-function drawFaceContours(ctx, width, height, landmarks, mirror) {
+function landmarkToPixel(nx, ny, width, height, mirror) {
+  const x = mirror ? 1 - nx : nx
+  const scaledX =
+    (FACE_MESH_CENTER + (x - FACE_MESH_CENTER) * FACE_MESH_SCALE_X) * width
+  const y = ny * height
+  return { x: scaledX, y }
+}
+
+function drawFaceMesh(ctx, width, height, landmarks, mirror) {
   if (!landmarks || !landmarks.length) return
-  ctx.strokeStyle = FACE_CONTOUR_STROKE
-  ctx.lineWidth = 1.5
+  ctx.save()
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
+
+  const tesselation = FaceLandmarker.FACE_LANDMARKS_TESSELATION
+  if (tesselation && tesselation.length) {
+    ctx.strokeStyle = FACE_TESSELATION_STROKE
+    ctx.lineWidth = FACE_TESSELATION_LINE_WIDTH
+    ctx.beginPath()
+    for (const conn of tesselation) {
+      const i = conn.start
+      const j = conn.end
+      if (i >= landmarks.length || j >= landmarks.length) continue
+      const a = landmarks[i]
+      const b = landmarks[j]
+      const p1 = landmarkToPixel(a.x, a.y, width, height, mirror)
+      const p2 = landmarkToPixel(b.x, b.y, width, height, mirror)
+      ctx.moveTo(p1.x, p1.y)
+      ctx.lineTo(p2.x, p2.y)
+    }
+    ctx.stroke()
+  }
+
+  ctx.strokeStyle = FACE_CONTOUR_STROKE
+  ctx.lineWidth = FACE_CONTOUR_LINE_WIDTH
   ctx.beginPath()
   for (const [i, j] of FACE_LANDMARKS_CONTOURS) {
     if (i >= landmarks.length || j >= landmarks.length) continue
     const a = landmarks[i]
     const b = landmarks[j]
-    const x1 = (mirror ? 1 - a.x : a.x) * width
-    const y1 = a.y * height
-    const x2 = (mirror ? 1 - b.x : b.x) * width
-    const y2 = b.y * height
-    ctx.moveTo(x1, y1)
-    ctx.lineTo(x2, y2)
+    const p1 = landmarkToPixel(a.x, a.y, width, height, mirror)
+    const p2 = landmarkToPixel(b.x, b.y, width, height, mirror)
+    ctx.moveTo(p1.x, p1.y)
+    ctx.lineTo(p2.x, p2.y)
   }
   ctx.stroke()
+  ctx.restore()
 }
