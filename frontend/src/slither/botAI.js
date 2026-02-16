@@ -3,10 +3,9 @@
  * Returns target angle per snake for slitherLogic to interpolate.
  */
 
-import { HEAD_RADIUS, BODY_RADIUS, ARENA_PADDING } from './slitherLogic.js'
+import { HEAD_RADIUS, BODY_RADIUS } from './slitherLogic.js'
 
 const DANGER_RADIUS = 80
-const WALL_AVOID_DIST = 120
 const PELLET_SEEK_RADIUS = 600
 const TURN_SMOOTH = 0.12
 
@@ -46,7 +45,7 @@ function distSq(a, b) {
  * @returns {Record<string, number>} snakeId -> target angle in radians
  */
 export function computeTargetAngles(state) {
-  const { snakes, pellets, bounds } = state
+  const { snakes, pellets } = state
   const result = /** @type {Record<string, number>} */ ({})
 
   for (const snake of snakes) {
@@ -55,7 +54,7 @@ export function computeTargetAngles(state) {
     let targetAngle = snake.angle
 
     const seekAngle = seekNearestPellet(head, pellets)
-    const avoidAngle = avoidObstacles(head, snake, snakes, bounds)
+    const avoidAngle = avoidObstacles(head, snake, snakes)
 
     if (avoidAngle !== null) {
       targetAngle = avoidAngle
@@ -91,37 +90,14 @@ function seekNearestPellet(head, pellets) {
 }
 
 /**
- * Repulsion from nearest danger (walls + body segments). Returns desired angle away from obstacles.
+ * Repulsion from nearest danger (body segments). Returns desired angle away from obstacles.
  * @param {Point} head
  * @param {Snake} self
  * @param {Snake[]} allSnakes
- * @param {Bounds} bounds
  * @returns {number | null} safe angle or null if no immediate danger
  */
-function avoidObstacles(head, self, allSnakes, bounds) {
+function avoidObstacles(head, self, allSnakes) {
   const repulsion = { x: 0, y: 0 }
-
-  const minX = ARENA_PADDING
-  const maxX = bounds.width - ARENA_PADDING
-  const minY = ARENA_PADDING
-  const maxY = bounds.height - ARENA_PADDING
-
-  if (head.x < minX + WALL_AVOID_DIST) {
-    const strength = 1 - (head.x - minX) / WALL_AVOID_DIST
-    repulsion.x += strength * 2
-  }
-  if (head.x > maxX - WALL_AVOID_DIST) {
-    const strength = 1 - (maxX - head.x) / WALL_AVOID_DIST
-    repulsion.x -= strength * 2
-  }
-  if (head.y < minY + WALL_AVOID_DIST) {
-    const strength = 1 - (head.y - minY) / WALL_AVOID_DIST
-    repulsion.y += strength * 2
-  }
-  if (head.y > maxY - WALL_AVOID_DIST) {
-    const strength = 1 - (maxY - head.y) / WALL_AVOID_DIST
-    repulsion.y -= strength * 2
-  }
 
   const r = HEAD_RADIUS + BODY_RADIUS + DANGER_RADIUS
   const rSq = r * r

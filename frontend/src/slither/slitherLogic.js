@@ -8,8 +8,8 @@ export const HEAD_RADIUS = 10
 export const BODY_RADIUS = 8
 export const PELLET_RADIUS = 6
 /** Extra radius for pellet collection (magnet effect). */
-export const MAGNET_RADIUS = 12
-export const DEFAULT_SPEED = 160
+export const MAGNET_RADIUS = 50
+export const DEFAULT_SPEED = 400
 export const TURN_SPEED = 4
 export const PELLET_VALUE = 1
 export const DEATH_PELLET_FRACTION = 0.4
@@ -42,7 +42,7 @@ function normalizeAngle(a) {
  * @returns {GameState}
  */
 export function createInitialState(options = {}) {
-  const bounds = options.bounds ?? { width: 3000, height: 3000 }
+  const bounds = options.bounds ?? { width: 6000, height: 6000 }
   const numBots = options.numBots ?? 8
   const numPellets = options.numPellets ?? 80
   const padding = ARENA_PADDING
@@ -115,25 +115,45 @@ export function createInitialState(options = {}) {
 }
 
 /**
- * Distance squared (avoids sqrt).
+ * Wrap a point into [0, bounds.width) x [0, bounds.height).
+ * @param {Point} p
+ * @param {Bounds} bounds
+ * @returns {Point}
+ */
+function wrapPoint(p, bounds) {
+  const w = bounds.width
+  const h = bounds.height
+  return {
+    x: ((p.x % w) + w) % w,
+    y: ((p.y % h) + h) % h,
+  }
+}
+
+/**
+ * Shortest distance squared between two points on a toroidal arena.
  * @param {Point} a
  * @param {Point} b
+ * @param {Bounds} bounds
  * @returns {number}
  */
-function distSq(a, b) {
-  const dx = b.x - a.x
-  const dy = b.y - a.y
+function toroidalDistSq(a, b, bounds) {
+  let dx = b.x - a.x
+  let dy = b.y - a.y
+  dx = dx - bounds.width * Math.round(dx / bounds.width)
+  dy = dy - bounds.height * Math.round(dy / bounds.height)
   return dx * dx + dy * dy
 }
 
 /**
  * Move snake head and update body segments (follow-the-leader).
+ * Positions are wrapped into bounds for toroidal arena.
  * @param {Snake} snake
  * @param {number} dt in seconds
  * @param {number} targetAngle desired angle (interpolated by turnSpeed)
+ * @param {Bounds} bounds
  * @returns {Snake}
  */
-function moveSnake(snake, dt, targetAngle) {
+function moveSnake(snake, dt, targetAngle, bounds) {
   const head = snake.segments[0]
   let angle = snake.angle
   const diff = normalizeAngle(targetAngle - angle)
@@ -142,7 +162,7 @@ function moveSnake(snake, dt, targetAngle) {
 
   const dx = Math.cos(angle) * snake.speed * dt
   const dy = Math.sin(angle) * snake.speed * dt
-  const newHead = { x: head.x + dx, y: head.y + dy }
+  let newHead = wrapPoint({ x: head.x + dx, y: head.y + dy }, bounds)
 
   const segments = [newHead]
   let prev = newHead
@@ -161,8 +181,8 @@ function moveSnake(snake, dt, targetAngle) {
         y: prev.y + ((curr.y - prev.y) / d) * SEGMENT_SPACING,
       }
     }
-    segments.push(next)
-    prev = next
+    segments.push(wrapPoint(next, bounds))
+    prev = segments[segments.length - 1]
   }
 
   return {
@@ -173,34 +193,20 @@ function moveSnake(snake, dt, targetAngle) {
 }
 
 /**
- * Check if head hits wall.
- * @param {Point} head
- * @param {Bounds} bounds
- * @returns {boolean}
- */
-function hitWall(head, bounds) {
-  return (
-    head.x - HEAD_RADIUS < 0 ||
-    head.y - HEAD_RADIUS < 0 ||
-    head.x + HEAD_RADIUS > bounds.width ||
-    head.y + HEAD_RADIUS > bounds.height
-  )
-}
-
-/**
- * Check if head hits another snake's body (not own body).
+ * Check if head hits another snake's body (not own body). Uses toroidal distance.
  * @param {string} snakeId
  * @param {Point} head
  * @param {Snake[]} allSnakes
+ * @param {Bounds} bounds
  * @returns {boolean}
  */
-function headHitsBody(snakeId, head, allSnakes) {
+function headHitsBody(snakeId, head, allSnakes, bounds) {
   const r = HEAD_RADIUS + BODY_RADIUS
   const rSq = r * r
   for (const snake of allSnakes) {
     if (snake.id === snakeId) continue
     for (let i = 0; i < snake.segments.length; i++) {
-      if (distSq(head, snake.segments[i]) < rSq) return true
+      if (toroidalDistSq(head, snake.segments[i], bounds) < rSq) return true
     }
   }
   return false
@@ -228,7 +234,7 @@ export function tick(state, dt, targetAngles = {}, options = {}) {
     const target = targetAngles[s.id] ?? s.angle
     const speedMul = s.isPlayer ? playerSpeedMultiplier : 1
     const snakeToMove = speedMul !== 1 ? { ...s, speed: s.speed * speedMul } : s
-    const result = moveSnake(snakeToMove, dt, target)
+    const result = moveSnake(snakeToMove, dt, target, bounds)
     if (speedMul !== 1) return { ...result, speed: s.speed }
     return result
   })
@@ -238,7 +244,7 @@ export function tick(state, dt, targetAngles = {}, options = {}) {
     const head = snake.segments[0]
     let lengthGain = 0
     for (let i = pellets.length - 1; i >= 0; i--) {
-      if (distSq(head, pellets[i]) < pelletCollectRadiusSq) {
+      if (toroidalDistSq(head, pellets[i], bounds) < pelletCollectRadiusSq) {
         lengthGain += pellets[i].value
         pellets = pellets.slice(0, i).concat(pellets.slice(i + 1))
       }
@@ -255,7 +261,7 @@ export function tick(state, dt, targetAngles = {}, options = {}) {
   const deadIds = new Set()
   for (const snake of snakes) {
     const head = snake.segments[0]
-    if (hitWall(head, bounds) || headHitsBody(snake.id, head, snakes)) {
+    if (headHitsBody(snake.id, head, snakes, bounds)) {
       deadIds.add(snake.id)
     }
   }

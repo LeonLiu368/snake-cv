@@ -18,8 +18,12 @@ function brightenColor(hex, amount) {
  * Camera follows the longest snake or the player snake; reports mouse position in world coords.
  * @param {{ state: { snakes: Array<{ segments: Array<{x,y}>, color: string, isPlayer?: boolean }>, pellets: Array<{x,y}>, bounds: { width, height } } }, onMouseMove?: (worldX: number, worldY: number) => void, playerDeadSnake?: { segments: Array<{x,y}>, color: string } | null, deathAnimationProgress?: number | null, speedBoostActive?: boolean, speedBoostProgress?: number }} props
  */
+const MINIMAP_SIZE = 140
+const MINIMAP_MARGIN = 4
+
 export function SlitherView({ state, onMouseMove, playerDeadSnake, deathAnimationProgress, speedBoostActive, speedBoostProgress }) {
   const canvasRef = useRef(null)
+  const minimapRef = useRef(null)
   const wrapRef = useRef(null)
   const cameraRef = useRef({ scale: 1, camX: 0, camY: 0 })
   const [resizeTick, setResizeTick] = useState(0)
@@ -85,10 +89,9 @@ export function SlitherView({ state, onMouseMove, playerDeadSnake, deathAnimatio
     ctx.translate(camX, camY)
     ctx.scale(scale, scale)
 
-    const padding = 40
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-    ctx.lineWidth = 2 / scale
-    ctx.strokeRect(padding, padding, bounds.width - padding * 2, bounds.height - padding * 2)
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)'
+    ctx.lineWidth = 1 / scale
+    ctx.strokeRect(0, 0, bounds.width, bounds.height)
 
     for (const pellet of pellets) {
       ctx.fillStyle = 'rgba(255, 200, 60, 1)'
@@ -194,6 +197,59 @@ export function SlitherView({ state, onMouseMove, playerDeadSnake, deathAnimatio
     }
 
     ctx.restore()
+
+    const minimapCanvas = minimapRef.current
+    if (minimapCanvas && bounds) {
+      const mW = MINIMAP_SIZE
+      const mH = MINIMAP_SIZE
+      if (minimapCanvas.width !== mW || minimapCanvas.height !== mH) {
+        minimapCanvas.width = mW
+        minimapCanvas.height = mH
+      }
+      const mCtx = minimapCanvas.getContext('2d')
+      if (!mCtx) return
+      const drawW = mW - MINIMAP_MARGIN * 2
+      const drawH = mH - MINIMAP_MARGIN * 2
+      const mScale = Math.min(drawW / bounds.width, drawH / bounds.height)
+      const mOx = MINIMAP_MARGIN
+      const mOy = MINIMAP_MARGIN
+      mCtx.fillStyle = 'rgba(0,0,0,0.75)'
+      mCtx.fillRect(0, 0, mW, mH)
+      mCtx.strokeStyle = 'rgba(255,255,255,0.12)'
+      mCtx.lineWidth = 1
+      mCtx.strokeRect(mOx, mOy, bounds.width * mScale, bounds.height * mScale)
+      for (const p of pellets) {
+        mCtx.fillStyle = 'rgba(255, 200, 60, 0.9)'
+        mCtx.beginPath()
+        mCtx.arc(mOx + p.x * mScale, mOy + p.y * mScale, 1, 0, Math.PI * 2)
+        mCtx.fill()
+      }
+      for (const snake of snakes) {
+        const head = snake.segments[0]
+        const mx = mOx + head.x * mScale
+        const my = mOy + head.y * mScale
+        const isPlayer = snake.isPlayer
+        mCtx.fillStyle = snake.color
+        mCtx.beginPath()
+        mCtx.arc(mx, my, isPlayer ? 3 : 2, 0, Math.PI * 2)
+        mCtx.fill()
+        if (isPlayer) {
+          mCtx.strokeStyle = 'rgba(255,255,255,0.9)'
+          mCtx.lineWidth = 1
+          mCtx.beginPath()
+          mCtx.arc(mx, my, 4, 0, Math.PI * 2)
+          mCtx.stroke()
+        }
+      }
+      const { scale, camX, camY } = cameraRef.current
+      const vw = canvas.width / scale
+      const vh = canvas.height / scale
+      const vx = mOx + (-camX / scale) * mScale
+      const vy = mOy + (-camY / scale) * mScale
+      mCtx.strokeStyle = 'rgba(255,255,255,0.35)'
+      mCtx.lineWidth = 1
+      mCtx.strokeRect(vx, vy, vw * mScale, vh * mScale)
+    }
   }, [state, resizeTick, playerDeadSnake, deathAnimationProgress, speedBoostActive, speedBoostProgress])
 
   useEffect(() => {
@@ -212,6 +268,13 @@ export function SlitherView({ state, onMouseMove, playerDeadSnake, deathAnimatio
   return (
     <div ref={wrapRef} className="slither-canvas-wrap">
       <canvas ref={canvasRef} className="slither-canvas" aria-label="Slither game view" />
+      <div className="slither-minimap-wrap">
+        <canvas
+          ref={minimapRef}
+          className="slither-minimap"
+          aria-label="Minimap of game area"
+        />
+      </div>
     </div>
   )
 }
