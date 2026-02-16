@@ -221,7 +221,7 @@ function headHitsBody(snakeId, head, allSnakes, bounds) {
   for (const snake of allSnakes) {
     if (snake.id === snakeId) continue
     for (let i = 0; i < snake.segments.length; i++) {
-      if (toroidalDistSq(head, snake.segments[i], bounds) < 2*rSq) return true
+      if (toroidalDistSq(head, snake.segments[i], bounds) < rSq) return true
     }
   }
   return false
