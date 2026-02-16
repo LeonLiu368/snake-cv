@@ -1,18 +1,40 @@
-# SnakeCV
+# CVified
 
-A browser-based snake game controlled by head direction using MediaPipe Face Landmarker. Play with your face or with the keyboard.
+**Computer vision games in the browser.** Play with your face—no controllers, no backend. All camera and face processing runs locally via MediaPipe.
+
+## Games
+
+### SnakeCV
+
+Classic Snake controlled by your head. Move your face (or use the keyboard) to steer. Eat pellets, avoid walls and your own tail.
+
+- **Head steering** — Nose/face movement maps to direction; the view is mirrored so it feels natural.
+- **Keyboard** — Arrow keys or WASD work as full alternatives.
+- **Recalibrate** — Reset the head-tracking center if the snake drifts.
+- **Face toggle** — Turn head tracking on or off; keyboard still works when off.
+
+### Slither
+
+Continuous snake: grow by eating pellets, avoid other snakes and walls. Last snake standing wins. Bot opponents only for now.
+
+- **Head steering** — Same face-tracking as SnakeCV; sensitivity slider to tune responsiveness.
+- **Speed boost** — Open your mouth to trigger a short speed burst (with cooldown).
+- **Pre-game calibration** — A short countdown before each game so you can get your face in frame.
+- **Recalibrate** — Recenter head tracking anytime.
+- **Pause / Resume** — Pause the simulation without losing progress.
 
 ## Tech stack
 
-- **React** + **Vite** for the frontend
-- **MediaPipe Face Landmarker** for head/nose tracking in the browser
-- No backend: camera and face detection run entirely in the browser. No video or face data is sent to any server.
+- **React** + **Vite** — Frontend and build.
+- **React Router** — Landing page and game routes.
+- **MediaPipe Tasks Vision** — Face Landmarker runs in the browser (WebAssembly) for nose position, head angle, and mouth openness.
+- **No backend** — Camera and face data stay in your browser; nothing is recorded or sent to a server.
 
 ## Prerequisites
 
-- **Node.js** 18 or later
-- A modern browser with camera access and `getUserMedia` support (Chrome, Firefox, Safari, Edge)
-- **HTTPS or localhost** is required for camera access (browsers block `getUserMedia` on plain HTTP except on localhost)
+- **Node.js** 18+
+- A modern browser with camera access (Chrome, Firefox, Safari, Edge).
+- **HTTPS or localhost** — Browsers require a secure context for `getUserMedia`; plain HTTP is blocked except on localhost.
 
 ## Setup
 
@@ -22,45 +44,35 @@ npm install
 npm run dev
 ```
 
-Open the URL shown in the terminal (typically http://localhost:5173).
+Open the URL in the terminal (usually http://localhost:5173). From the landing page, pick **SnakeCV** or **Slither**.
 
-## Build
+## Scripts
 
-```bash
-cd frontend
-npm run build
-```
+| Command           | Description                |
+|-------------------|----------------------------|
+| `npm run dev`     | Start Vite dev server      |
+| `npm run build`   | Production build → `dist/` |
+| `npm run preview` | Serve production build     |
+| `npm run lint`    | Run ESLint                 |
+| `npm run format`  | Prettier on `src/`         |
+| `npm run test`    | Run Vitest                 |
 
-Output is written to `frontend/dist/`. Serve that folder with any static file server. To test the production build locally:
+## Build & deployment
 
-```bash
-npm run preview
-```
+The app builds to `frontend/dist/`. Serve that directory with any static host (e.g. nginx, GitHub Pages, Netlify, Vercel). For a subpath (e.g. `https://example.com/cvified/`), set `base: '/cvified/'` in `frontend/vite.config.js` and rebuild.
 
-## Deployment
+Optional env for custom MediaPipe assets (e.g. self-hosted):
 
-The production build outputs to `frontend/dist/`. Serve that directory with any static file server (e.g. nginx, GitHub Pages, Netlify, or S3). If the app is served from a subpath (e.g. `https://example.com/snakecv/`), set `base: '/snakecv/'` in `frontend/vite.config.js` and rebuild.
-
-## Controls
-
-- **Head direction**: Move your nose (or face) up/down/left/right to steer the snake. The game mirrors your movement so it feels natural.
-- **Keyboard**: Arrow keys or WASD work as well and are full alternatives to head control.
-- **Start**: Begin or resume the game.
-- **Pause**: Pause the game.
-- **Recalibrate**: Reset the “center” position for head tracking if the snake drifts.
-- **Face toggle**: Turn head tracking on or off (keyboard still works when off).
-
-## Browser support
-
-Camera access requires a secure context (HTTPS or localhost). See [caniuse.com/getusermedia](https://caniuse.com/getusermedia) for support. MediaPipe runs in the browser via WebAssembly.
+- `VITE_MEDIAPIPE_WASM_URL` — WASM base URL
+- `VITE_FACE_LANDMARKER_MODEL_URL` — Face Landmarker model URL
 
 ## Privacy
 
-The camera is used only in your browser. Video and face landmark data are processed locally by MediaPipe. Nothing is recorded or sent to any server.
+Video and face landmarks are processed only in your browser by MediaPipe. Nothing is recorded or sent to any server.
 
 ## Accessibility
 
-The game is fully playable with the keyboard (arrow keys or WASD); head tracking is optional. If the camera is unavailable or you turn the Face toggle off, you can still play. Overlays (e.g. Game Over, Paused, camera error) are labeled for screen readers and the Retry button is focusable.
+Both games are playable with the keyboard; head tracking is optional. If the camera is unavailable or the Face toggle is off, you can still play SnakeCV with arrows/WASD. Overlays (Game Over, calibration, errors) use appropriate roles and labels for screen readers.
 
 ## License
 
