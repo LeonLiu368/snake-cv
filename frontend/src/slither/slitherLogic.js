@@ -6,9 +6,9 @@
 export const SEGMENT_SPACING = 8
 export const HEAD_RADIUS = 15
 export const BODY_RADIUS = 15
-export const PELLET_RADIUS = 6
+export const PELLET_RADIUS = 30
 /** Extra radius for pellet collection (magnet effect). */
-export const MAGNET_RADIUS = 50
+export const MAGNET_RADIUS = 100
 export const DEFAULT_SPEED = 400
 export const TURN_SPEED = 6
 export const PELLET_VALUE = 2
@@ -136,7 +136,7 @@ function wrapPoint(p, bounds) {
  * @param {Bounds} bounds
  * @returns {number}
  */
-function toroidalDistSq(a, b, bounds) {
+export function toroidalDistSq(a, b, bounds) {
   let dx = b.x - a.x
   let dy = b.y - a.y
   dx = dx - bounds.width * Math.round(dx / bounds.width)
@@ -214,7 +214,7 @@ function headHitsBody(snakeId, head, allSnakes, bounds) {
   for (const snake of allSnakes) {
     if (snake.id === snakeId) continue
     for (let i = 0; i < snake.segments.length; i++) {
-      if (toroidalDistSq(head, snake.segments[i], bounds) < rSq) return true
+      if (toroidalDistSq(head, snake.segments[i], bounds) < 2*rSq) return true
     }
   }
   return false

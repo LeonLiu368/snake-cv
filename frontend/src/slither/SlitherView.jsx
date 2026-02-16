@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { PELLET_RADIUS, HEAD_RADIUS, BODY_RADIUS } from './slitherLogic.js'
+import { PELLET_RADIUS, HEAD_RADIUS, BODY_RADIUS, MAGNET_RADIUS, toroidalDistSq } from './slitherLogic.js'
 
 /** Mix hex color with white; amount 0 = original, 1 = white. */
 function brightenColor(hex, amount) {
@@ -223,6 +223,7 @@ export function SlitherView({ state, onMouseMove, playerDeadSnake, deathAnimatio
     ctx.translate(camX, camY)
     ctx.scale(scale, scale)
 
+    const pelletPulse = 1 + 0.08 * Math.sin((performance.now() / 1000) * Math.PI)
     const toroidalOffsets = [
       { x: 0, y: 0 },
       { x: -w, y: 0 },
@@ -239,21 +240,65 @@ export function SlitherView({ state, onMouseMove, playerDeadSnake, deathAnimatio
       ctx.save()
       ctx.translate(offset.x, offset.y)
 
+      const collectRadius = HEAD_RADIUS + PELLET_RADIUS + MAGNET_RADIUS + 150 
       for (const pellet of pellets) {
+        const distSq = toroidalDistSq(focus, pellet, bounds)
+        const dist = Math.sqrt(distSq)
+        const absorption = Math.max(0, 1 - dist / collectRadius)
+        let pullX = 0
+        let pullY = 0
+        if (absorption > 0) {
+          pullX = (focus.x - pellet.x) - w * Math.round((focus.x - pellet.x) / w)
+          pullY = (focus.y - pellet.y) - h * Math.round((focus.y - pellet.y) / h)
+          pullX *= absorption * 0.35
+          pullY *= absorption * 0.35
+        }
+        const valueMult = 1 + (pellet.value - 1) * 0.2
         const positions =
           offset.x === 0 && offset.y === 0
             ? toroidalDrawPositions(pellet.x, pellet.y, bounds)
             : [[pellet.x, pellet.y]]
         for (const [px, py] of positions) {
-          ctx.fillStyle = 'rgba(255, 200, 60, 1)'
+          const usePull = offset.x === 0 && offset.y === 0
+          const drawX = usePull ? px + pullX : px
+          const drawY = usePull ? py + pullY : py
+          const sizeMult = 1 - absorption * 0.55
+          const r = PELLET_RADIUS * pelletPulse * sizeMult
+          const highlightOffset = r * 0.35
+          const cx = drawX - highlightOffset
+          const cy = drawY - highlightOffset
+          ctx.save()
+          ctx.globalAlpha = 1 - absorption * 0.4
+          ctx.shadowColor = 'rgba(255, 100, 0, 0.9)'
+          ctx.shadowBlur = (12 * valueMult * sizeMult) / scale
+          const orbGrad = ctx.createRadialGradient(cx, cy, 0, drawX, drawY, r)
+          orbGrad.addColorStop(0, 'rgba(255, 255, 255, 1)')
+          orbGrad.addColorStop(0.2, 'rgba(255, 255, 120, 1)')
+          orbGrad.addColorStop(0.45, 'rgba(255, 220, 60, 1)')
+          orbGrad.addColorStop(0.7, 'rgba(255, 160, 40, 1)')
+          orbGrad.addColorStop(0.9, 'rgba(255, 100, 80, 1)')
+          orbGrad.addColorStop(1, 'rgba(220, 60, 100, 1)')
+          ctx.fillStyle = orbGrad
           ctx.beginPath()
-          ctx.arc(px, py, PELLET_RADIUS, 0, Math.PI * 2)
+          ctx.arc(drawX, drawY, r, 0, Math.PI * 2)
           ctx.fill()
-          ctx.strokeStyle = 'rgba(255, 230, 120, 0.8)'
-          ctx.lineWidth = 1.5 / scale
+          ctx.restore()
+          ctx.save()
+          ctx.globalAlpha = 1 - absorption * 0.4
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
+          ctx.beginPath()
+          ctx.arc(cx - r * 0.15, cy - r * 0.15, r * 0.28, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.strokeStyle = 'rgba(255, 200, 120, 0.6)'
+          ctx.lineWidth = 1 / scale
+          ctx.beginPath()
+          ctx.arc(drawX, drawY, r, 0, Math.PI * 2)
           ctx.stroke()
+          ctx.restore()
         }
       }
+      ctx.shadowColor = 'transparent'
+      ctx.shadowBlur = 0
 
       for (const snake of snakes) {
       const segs = snake.segments
@@ -263,6 +308,16 @@ export function SlitherView({ state, onMouseMove, playerDeadSnake, deathAnimatio
       const bodyWidth = (BODY_RADIUS * 2) / scale
       const head = segs[0]
       const tail = segs[segs.length - 1]
+      ctx.save()
+      ctx.shadowColor = snake.color
+      ctx.shadowBlur = (snake.isPlayer ? 14 : 10) / scale
+      ctx.strokeStyle = snake.color
+      ctx.globalAlpha = snake.isPlayer ? 0.4 : 0.35
+      ctx.lineWidth = bodyWidth + 4 / scale
+      ctx.beginPath()
+      strokeToroidalPath(ctx, segs, bounds)
+      ctx.stroke()
+      ctx.restore()
       ctx.beginPath()
       strokeToroidalPath(ctx, segs, bounds)
       const isPlayerBoost = snake.isPlayer && speedBoostActive && speedBoostProgress != null
@@ -305,6 +360,10 @@ export function SlitherView({ state, onMouseMove, playerDeadSnake, deathAnimatio
         ctx.fillStyle = 'rgba(255,255,255,0.35)'
         ctx.beginPath()
         ctx.arc(hx - 2.5, hy - 2.5, HEAD_RADIUS * 0.35, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'
+        ctx.beginPath()
+        ctx.arc(hx + 2.5, hy + 2.5, HEAD_RADIUS * 0.2, 0, Math.PI * 2)
         ctx.fill()
         ctx.fillStyle = snake.color
       }
@@ -382,6 +441,7 @@ export function SlitherView({ state, onMouseMove, playerDeadSnake, deathAnimatio
       mCtx.strokeStyle = 'rgba(255,255,255,0.12)'
       mCtx.lineWidth = 1
       mCtx.strokeRect(mOx, mOy, bounds.width * mScale, bounds.height * mScale)
+      mCtx.lineWidth = 10
       for (const p of pellets) {
         mCtx.fillStyle = 'rgba(255, 200, 60, 0.9)'
         mCtx.beginPath()
