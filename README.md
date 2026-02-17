@@ -6,23 +6,24 @@
 
 ### SnakeCV
 
-Classic Snake game but controlled by your head. Move your face to steer. Eat appls, avoid walls and your own tail.
+New version of the classic snake game, but instead with head direction inputs. The goal is to grow longer by eating apples, avoiding walls and your own body. 
 
 ### Slither
 
-Continuous snake: grow by eating pellets, avoid other snakes and walls. Last snake standing wins. Bot opponents only for now.
-Inspired by Slither.io.
+Inspired heavily by Slither.io.
+The goal is to grow by eating pellets, avoiding other snakes. The last snake standing wins. 
+Open your mouth to activate a speed boost. 
+Currently buggy because of toroidal map rendering...
+(Multiplayer coming soon??)
 
 ## Tech stack
 
 - **React** + **Vite** — Frontend and build.
-- **React Router** — Landing page and game routes.
-- **MediaPipe Tasks Vision** — Face Landmarker runs in the browser (WebAssembly) for nose position, head angle, and mouth openness.
+- **MediaPipe Tasks Vision** — Face Landmarker runs in the browser (WebAssembly) for facial landmarks (e.g. nose, eyes, mouth)
 - **No backend** — TODO (multiplayer??? maybe)
 
 ## Prerequisites
 
-- **Node.js** 18+
 - A modern browser with camera access (Chrome, Firefox, Safari, Edge).
 
 ## Running Locally:
@@ -33,22 +34,7 @@ npm install
 npm run dev
 ```
 
-Open the URL in the terminal (usually http://localhost:5173). From the landing page, pick **SnakeCV** or **Slither**.
-
-## Scripts
-
-| Command           | Description                |
-|-------------------|----------------------------|
-| `npm run dev`     | Start Vite dev server      |
-| `npm run build`   | Production build → `dist/` |
-| `npm run preview` | Serve production build     |
-| `npm run lint`    | Run ESLint                 |
-| `npm run format`  | Prettier on `src/`         |
-| `npm run test`    | Run Vitest                 |
-
-## Build & deployment
-
-The app builds to `frontend/dist/`. Serve that directory with any static host (e.g. nginx, GitHub Pages, Netlify, Vercel). For a subpath (e.g. `https://example.com/cvified/`), set `base: '/cvified/'` in `frontend/vite.config.js` and rebuild.
+Open the URL in the terminal (usually http://localhost:5173). From the landing page, play a game (more coming soon??). 
 
 Optional env for custom MediaPipe assets (e.g. self-hosted):
 
@@ -57,11 +43,11 @@ Optional env for custom MediaPipe assets (e.g. self-hosted):
 
 ## Privacy
 
-Video and face landmarks are processed only in your browser by MediaPipe. Nothing is recorded or sent to any server.
+Video and face landmarks are processed only in your browser by MediaPipe. Nothing is recorded or sent to any server (trust me). 
 
 ## Accessibility
 
-Both games are playable with the keyboard; head tracking is optional. If the camera is unavailable or the Face toggle is off, you can still play SnakeCV with arrows/WASD (though less fun). Overlays (Game Over, calibration, errors) use appropriate roles and labels for screen readers.
+Both games are playable with the keyboard; head tracking is optional. If the camera is unavailable or the Face toggle is off, you can still play SnakeCV with arrows/WASD (though less fun). 
 
 ## License
 
