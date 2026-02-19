@@ -46,7 +46,7 @@ function normalizeAngle(a) {
  * @returns {GameState}
  */
 export function createInitialState(options = {}) {
-  const bounds = options.bounds ?? { width: 6000, height: 6000 }
+  const bounds = options.bounds ?? { width: 10000, height: 10000 }
   const numBots = options.numBots ?? 8
   const numPellets = options.numPellets ?? 80
   const padding = ARENA_PADDING

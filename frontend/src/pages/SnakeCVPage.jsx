@@ -153,7 +153,7 @@ export function SnakeCVPage() {
 
   useEffect(() => {
     if (!running) return undefined
-    const delay = Math.max(SPEED_MIN, START_SPEED - score * 2)
+    const delay = Math.max(SPEED_MIN, START_SPEED - score)
     const interval = setInterval(() => {
       setSnake((prev) => {
         const nextDirection = queuedDirection.current
